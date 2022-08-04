@@ -13,7 +13,8 @@
     "mocha": "^6.1.4",
     "request": "^2.88.0",
     "sinon": "^7.3.2",
-    "slackbots": "^1.2.0"
+    "slackbots": "^1.2.0",
+    "mysql": "^2.18.1"
   },
   "scripts": {
     "start": "node app"

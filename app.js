@@ -1,6 +1,8 @@
+require('dotenv').config()
 const express = require("express");
 const app = express();
 const wp = require("./lib/worshipplanning");
+const pm = require("./lib/paxminer");
 //const slack = require('./lib/slack')
 
 app.use(express.json());
@@ -25,6 +27,16 @@ app.get("/api/events/", (req, res) =>
       res.header("Content-Type", "application/json");
       res.send(JSON.stringify(events, null, 4));
     }
+  })
+);
+
+app.get("/api/bbcheck/", (req, res) => 
+  pm.getBBs(results => {
+    res.header("Content-Type", "application/json");
+      res.send(JSON.stringify(results, null, 4));
+  }).catch(err => {
+    console.log(err);
+    res.send("Error: " + err);
   })
 );
 
