@@ -40,4 +40,16 @@ app.get("/api/bbcheck/", (req, res) =>
   })
 );
 
+app.post("/api/bbcheck/", (req, res) => {
+  ao = req.body['ao']
+  pax = req.body['pax']
+  date = req.body['date']
+  pm.addVQ(date, pax, ao).catch(err => {
+    console.log(err);
+    res.send("Error: " + err);
+  })
+  res.send("Ok")
+}
+);
+
 app.listen(PORT, () => console.log(`Example app listening on ${PORT}!`));

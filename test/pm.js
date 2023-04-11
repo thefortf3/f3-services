@@ -10,4 +10,6 @@ pm.getBBs((results) => {
 
     process.exit();
 });
+
+pm.addVQ('2023-02-11', 'Console', 'The Ranch')
     
