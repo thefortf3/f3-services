@@ -44,7 +44,7 @@ app.post("/api/addvq", (req, res) => {
   ao = req.body['ao']
   pax = req.body['pax']
   date = req.body['date']
-  pm.addVQ(date, pax, ao).catch(err => {
+  pm.addVQ(date, pax, ao, (err) => {
     console.log(err);
     res.send("Error: " + err);
   })
