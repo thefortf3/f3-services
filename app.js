@@ -40,7 +40,7 @@ app.get("/api/bbcheck/", (req, res) =>
   })
 );
 
-app.post("/api/bbcheck/", (req, res) => {
+app.post("/api/addvq", (req, res) => {
   ao = req.body['ao']
   pax = req.body['pax']
   date = req.body['date']
