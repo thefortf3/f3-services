@@ -45,10 +45,15 @@ app.post("/api/addvq", (req, res) => {
   pax = req.body['pax']
   date = req.body['date']
   pm.addVQ(date, pax, ao, (err) => {
-    console.log(err);
-    res.send("Error: " + err);
+    if (err) {
+      console.log(err);
+      res.send("Error: " + err);
+    } else {
+      res.send("Ok")
+    }
+
   })
-  res.send("Ok")
+  
 }
 );
 
