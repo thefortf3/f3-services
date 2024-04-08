@@ -3,6 +3,7 @@ const express = require("express");
 const app = express();
 const wp = require("./lib/worshipplanning");
 const pm = require("./lib/paxminer");
+const wordpress = require("./lib/wordpress")
 //const slack = require('./lib/slack')
 
 app.use(express.json());
@@ -14,7 +15,7 @@ app.use(
 
 const PORT = process.env.PORT || 5000;
 
-app.get("/", (req, res) => res.redirect("/api/events"));
+app.get("/", (req, res) => res.redirect("/api/heartbeat"));
 
 app.get("/api/heartbeat", (req, res) => res.send("Ok"));
 
@@ -40,6 +41,22 @@ app.get("/api/bbcheck/", (req, res) =>
   })
 );
 
+app.get("/api/postbbs/", (req, res) => {
+  let timestamp = parseFloat(req.query['timestamp'])
+  let resultJson = {}
+  resultJson['count'] = 0
+  resultJson['last'] = timestamp
+  pm.getBBDataSince(timestamp, results => {
+      postBBs(results, timestamp).then(resultsJson => {
+        res.header("Content-Type", "application/json");
+        res.send(JSON.stringify(resultsJson, null, 4));
+      })
+  }).catch(err => {
+    console.log(err);
+    res.send("Error: " + err);
+  })
+});
+
 app.post("/api/addvq", (req, res) => {
   ao = req.body['ao']
   pax = req.body['pax']
@@ -56,5 +73,34 @@ app.post("/api/addvq", (req, res) => {
   
 }
 );
+
+async function postBBs(backblasts, timestamp) {
+  let resultJson = {}
+  resultJson['last'] = timestamp
+  resultJson['count'] = 0
+  try {
+    for(let i=0; i < backblasts.length; i++) {
+      let bb = backblasts[i]
+      console.log(bb)
+
+      retval = await wordpress.postToWordpress(
+          bb.title, 
+          bb.date, 
+          bb.q, 
+          ('coq' in bb) ? bb.coq : null, 
+          bb.ao, 
+          bb.pax, 
+          bb.backblast)
+      if (bb.timestamp > resultJson['last']) {
+        resultJson['last'] = bb.timestamp
+      }
+      resultJson['count']++;
+    }
+  } catch (error) {
+    console.log(error)
+    
+  }
+  return resultJson
+}
 
 app.listen(PORT, () => console.log(`Example app listening on ${PORT}!`));

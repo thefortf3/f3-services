@@ -11,10 +11,12 @@
     "jshint": "^2.10.2",
     "jshint-stylish": "^2.2.1",
     "mocha": "^6.1.4",
+    "mysql": "^2.18.1",
+    "node-fetch": "^2.7.0",
+    "package.json": "^2.0.1",
     "request": "^2.88.0",
     "sinon": "^7.3.2",
-    "slackbots": "^1.2.0",
-    "mysql": "^2.18.1"
+    "slackbots": "^1.2.0"
   },
   "scripts": {
     "start": "node app"
