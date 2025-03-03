@@ -83,7 +83,7 @@ async function postBBs(backblasts, timestamp) {
       let bb = backblasts[i]
       console.log(bb)
 
-      retval = await wordpress.postToWordpress(
+      retval = wordpress.postToWordpress(
           bb.title, 
           bb.date, 
           bb.q, 
