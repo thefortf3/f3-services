@@ -36,10 +36,10 @@ async function postBBs(backblasts, timestamp) {
 
 (async() => {
 try {
-  let timestamp = 1723057105.0
+  let timestamp = 1758074910.0
   let resultJson = {}
   resultJson['count'] = 0
-  resultJson['last'] = 1723057105.0
+  resultJson['last'] = 1758074910.0
   pm.getBBDataSince(timestamp, results => {
 	  console.log(results)
       postBBs(results, timestamp).then(resultsJson => {
