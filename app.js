@@ -73,18 +73,9 @@ app.get("/api/postpbs/", (req, res) => {
       })
   }).catch(err => {
       console.log(err);
+      res.send("Error: " + err);
+
   });
-
-  pm.getBBDataSince(timestamp, results => {
-      postBBs(results, timestamp).then(resultsJson => {
-        res.header("Content-Type", "application/json");
-        res.send(JSON.stringify(resultsJson, null, 4));
-      })
-  }).catch(err => {
-    console.log(err);
-    res.send("Error: " + err);
-  })
-
   
 });
 
