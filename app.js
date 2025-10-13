@@ -3,7 +3,8 @@ const express = require("express");
 const app = express();
 const wp = require("./lib/worshipplanning");
 const pm = require("./lib/paxminer");
-const wordpress = require("./lib/wordpress")
+const wordpress = require("./lib/wordpress");
+const pb = require("./lib/preblast");
 //const slack = require('./lib/slack')
 
 app.use(express.json());
@@ -55,6 +56,36 @@ app.get("/api/postbbs/", (req, res) => {
     console.log(err);
     res.send("Error: " + err);
   })
+
+  
+});
+
+app.get("/api/postpbs/", (req, res) => {
+  let timestamp = parseFloat(req.query['timestamp'])
+  let resultJson = {}
+  resultJson['count'] = 0
+  resultJson['last'] = timestamp;
+
+  pb.searchPreblastPosts(timestamp).then(results => {
+      postPBs(results, timestamp).then(resultsJson => {
+        res.header("Content-Type", "application/json");
+        res.send(JSON.stringify(resultsJson, null, 4));
+      })
+  }).catch(err => {
+      console.log(err);
+  });
+
+  pm.getBBDataSince(timestamp, results => {
+      postBBs(results, timestamp).then(resultsJson => {
+        res.header("Content-Type", "application/json");
+        res.send(JSON.stringify(resultsJson, null, 4));
+      })
+  }).catch(err => {
+    console.log(err);
+    res.send("Error: " + err);
+  })
+
+  
 });
 
 app.post("/api/addvq", (req, res) => {
@@ -73,6 +104,36 @@ app.post("/api/addvq", (req, res) => {
   
 }
 );
+
+async function postPBs(preblasts, timestamp) {
+  let resultJson = {}
+  resultJson['last'] = timestamp
+  resultJson['count'] = 0
+  try {
+      for (let i=0; i < preblasts.length; i++) {
+        let r = preblasts[i];
+        console.log(r.Preblast);
+        retval= wp.postToWordpress(
+            r.Preblast, 
+            r.Date + " " + r.Time + ":00", 
+            r.Q, 
+            null,
+            r.Where, 
+            [], 
+            r.Content,
+            true)
+ 
+      if (r.Timestamp > resultJson['last']) {
+        resultJson['last'] = r.Timestamp;
+      }
+      resultJson['count']++;
+    }
+  } catch (error) {
+    console.log(error)
+    
+  }
+  return resultJson
+}
 
 async function postBBs(backblasts, timestamp) {
   let resultJson = {}
