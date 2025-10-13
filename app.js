@@ -113,7 +113,7 @@ async function postPBs(preblasts, timestamp) {
       for (let i=0; i < preblasts.length; i++) {
         let r = preblasts[i];
         console.log(r.Preblast);
-        retval= wp.postToWordpress(
+        retval= wordpress.postToWordpress(
             r.Preblast, 
             r.Date + " " + r.Time + ":00", 
             r.Q, 
