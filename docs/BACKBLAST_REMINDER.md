@@ -13,7 +13,11 @@ GET /api/check_missing_backblasts
 ## Query Parameters
 
 - `date` (optional): Date to check in YYYY-MM-DD format. Defaults to yesterday if not provided.
-- `send` (optional): Set to `true` to actually send Slack reminders. If omitted or `false`, only returns the list of missing backblasts without sending messages.
+- `send` (optional): **Legacy parameter.** Set to `true` to send both channel messages and DMs. Equivalent to `sendChannel=true&sendDMs=true`.
+- `sendChannel` (optional): Set to `true` to send admin channel notifications only (no DMs).
+- `sendDMs` (optional): Set to `true` to send direct messages to Site Qs and scheduled Qs only (no channel messages).
+
+**Note:** You can combine `sendChannel` and `sendDMs` parameters for granular control. If none are specified, only returns data without sending messages.
 
 ## Configuration
 
@@ -39,11 +43,20 @@ curl "http://localhost:3000/api/check_missing_backblasts?date=2026-01-17"
 ### Send reminders for missing backblasts
 
 ```bash
-# Send reminders for yesterday
+# Send both channel notifications and DMs for yesterday (legacy method)
 curl "http://localhost:3000/api/check_missing_backblasts?send=true"
 
-# Send reminders for a specific date
+# Send both channel notifications and DMs for a specific date (legacy method)
 curl "http://localhost:3000/api/check_missing_backblasts?date=2026-01-17&send=true"
+
+# Send only channel notifications (no DMs)
+curl "http://localhost:3000/api/check_missing_backblasts?date=2026-01-17&sendChannel=true"
+
+# Send only DMs to Site Qs and scheduled Qs (no channel messages)
+curl "http://localhost:3000/api/check_missing_backblasts?date=2026-01-17&sendDMs=true"
+
+# Send both channel notifications and DMs (explicit method)
+curl "http://localhost:3000/api/check_missing_backblasts?date=2026-01-17&sendChannel=true&sendDMs=true"
 ```
 
 ## Response Format
@@ -114,9 +127,20 @@ The endpoint returns JSON with both found and missing backblasts:
       }
     ]
   },
-  "remindersSent": false,
-  "reminderResults": null,
-  "missingIdNotification": null
+  "remindersSent": true,
+  "remindersConfig": {
+    "sendChannel": true,
+    "sendDMs": false
+  },
+  "reminderResults": {
+    "channelMessages": 1,
+    "directMessages": 0,
+    "errors": []
+  },
+  "missingIdNotification": {
+    "sent": false,
+    "error": null
+  }
 }
 ```
 
@@ -132,12 +156,15 @@ The endpoint returns JSON with both found and missing backblasts:
 - `missingSlackIds` (object): Information about missing Slack IDs in GloomSchedule
   - `aos` (array): AOs without Slack channel IDs
   - `siteQs` (array): Site Qs without Slack user IDs (includes AO context)
-- `remindersSent` (boolean): Whether reminders were sent (based on `send` query param)
-- `reminderResults` (object|null): Results of reminder sending (only when `send=true`)
+- `remindersSent` (boolean): Whether any reminders were sent (true if `send`, `sendChannel`, or `sendDMs` was set to true)
+- `remindersConfig` (object|null): Configuration of what was sent (only when reminders were sent)
+  - `sendChannel` (boolean): Whether channel messages were sent
+  - `sendDMs` (boolean): Whether direct messages were sent
+- `reminderResults` (object|null): Results of reminder sending (only when reminders were sent)
   - `channelMessages` (number): Number of admin channel messages sent
   - `directMessages` (number): Number of DMs sent to Site Qs and scheduled Qs
   - `errors` (array): Any errors that occurred while sending messages
-- `missingIdNotification` (object|null): Results of admin notification about missing Slack IDs (only when `send=true`)
+- `missingIdNotification` (object|null): Results of admin notification about missing Slack IDs (only when reminders were sent)
   - `sent` (boolean): Whether the notification was sent
   - `error` (string|null): Error message if notification failed
 
@@ -150,11 +177,14 @@ The endpoint returns JSON with both found and missing backblasts:
    - Skips AOs with shutdown dates on or before the workout date
 3. **Checks Database**: Queries PAXMiner `beatdowns` table to see if backblast was posted
 4. **Tracks Missing Slack IDs**: Identifies AOs without channel IDs and Site Qs without user IDs (only for active, scheduled workouts)
-5. **Sends Reminders** (if `send=true`):
-   - Posts admin notification to `BACKBLAST_REMINDER_CHANNEL`
-   - Sends DM to all Site Qs (if they have Slack user IDs)
-   - Sends DM to scheduled Q (if different from Site Qs and has Slack user ID)
-   - Sends admin notification about missing Slack IDs to `SCHEDULE_ADMIN_USER_ID`
+5. **Sends Reminders** (based on query parameters):
+   - **Channel Messages** (when `sendChannel=true` or `send=true`):
+     - Posts admin notification to `BACKBLAST_REMINDER_CHANNEL` for each missing backblast
+   - **Direct Messages** (when `sendDMs=true` or `send=true`):
+     - Sends DM to all Site Qs (if they have Slack user IDs)
+     - Sends DM to scheduled Q (if different from Site Qs and has Slack user ID)
+   - **Admin Notifications**:
+     - Sends admin DM about missing Slack IDs to `SCHEDULE_ADMIN_USER_ID` (if any found)
 
 ## Slack Message Types
 
@@ -189,6 +219,25 @@ Sends DM to the scheduled Q (if not also a Site Q) with:
 - Request to post backblast
 - Button to navigate to AO channel
 
+**Note:** The scheduled Q status (e.g., "accepted", "assigned") is NOT included in reminder messages - only the Q's name is shown.
+
+## Message Configuration Options
+
+The system provides flexible control over reminder delivery:
+
+| Parameter | Channel Messages | Direct Messages | Use Case |
+|-----------|------------------|-----------------|----------|
+| None | No | No | Check only (reporting) |
+| `send=true` | Yes | Yes | Full reminders (legacy) |
+| `sendChannel=true` | Yes | No | Admin notifications only |
+| `sendDMs=true` | No | Yes | Direct to Q/Site Qs only |
+| Both `sendChannel=true&sendDMs=true` | Yes | Yes | Full reminders (explicit) |
+
+**Example Use Cases:**
+- **Initial backfill**: Use `sendChannel=true` to notify admin channel without spamming Site Qs with old reminders
+- **Daily automation**: Use `send=true` or both parameters for complete reminder workflow
+- **Targeted follow-up**: Use `sendDMs=true` to send DMs only after admin has been notified
+
 ## Scheduling
 
 To run this automatically, set up a cron job or scheduled task:
@@ -203,7 +252,7 @@ To run this automatically, set up a cron job or scheduled task:
 The endpoint will return errors in these cases:
 
 - Invalid date format: Returns 400 with error message
-- Missing `BACKBLAST_REMINDER_CHANNEL` when trying to send: Returns 500 with error message
+- Missing `BACKBLAST_REMINDER_CHANNEL` when `sendChannel=true` (or `send=true`): Returns 500 with error message
 - GloomSchedule API errors: Returns 500 with error message
 - Database connection errors: Returns 500 with error message
 
