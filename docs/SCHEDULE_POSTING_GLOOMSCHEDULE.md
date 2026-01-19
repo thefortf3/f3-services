@@ -160,6 +160,8 @@ The system maps workout types to emojis with intelligent parsing:
 | Workout Type | Emoji |
 |--------------|-------|
 | Running / Run | 🏃 |
+| Running with Pain Stations | 🏃 |
+| Running w/ Pain Stations | 🏃 |
 | Rucking / Ruck | 🎒 |
 | Bootcamp | 🥾 |
 | Kettlebell | 🫖 |
@@ -176,15 +178,17 @@ The system maps workout types to emojis with intelligent parsing:
 
 ### Day-Specific Workout Types
 
-The scheduler supports day-specific workout types for AOs that vary by day. For example:
+The scheduler intelligently handles day-specific workout types for AOs that vary by day. For example:
 
 ```
 "Tu: Bootcamp, Th: Running with Pain Stations"
 ```
 
-On Tuesday, this will show the Bootcamp emoji (🥾). On Thursday, it will parse "Running with Pain Stations" and show the Running emoji (🏃).
+**On Tuesday:** Shows Bootcamp emoji (🥾)  
+**On Thursday:** Shows Running emoji (🏃)  
+**On other days:** No emoji (workout type doesn't apply)
 
-**Unknown workout types** are tracked and reported to the admin user via DM.
+The system will **not** report day-specific types as "unknown" when they don't apply to the current day. Only truly unrecognized workout types are reported to the admin.
 
 ## Event Type Filtering
 
