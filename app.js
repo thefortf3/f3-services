@@ -8,6 +8,7 @@ const wordpress = require("./lib/wordpress");
 const pb = require("./lib/preblast");
 const calendar = require('./lib/calendar');
 const scheduler = require('./lib/scheduler');
+const schedulerGloomSchedule = require('./lib/scheduler-gloomschedule');
 const backblastReminder = require('./lib/backblast-reminder');
 
 // Use the receiver's Express app for routes
@@ -126,6 +127,51 @@ app.post('/api/post_schedule', async (req, res) => {
     };
     
     const result = await scheduler.postTomorrowsSchedule(options);
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ 
+      success: false, 
+      error: err.message 
+    });
+  }
+});
+
+// Post schedule using GloomSchedule API (new endpoint)
+app.post('/api/post_schedule_v2', async (req, res) => {
+  try {
+    const apiKey = process.env.GS_API_KEY;
+    const baseUrl = process.env.GS_API_ENDPOINT;
+    
+    if (!apiKey || !baseUrl) {
+      return res.status(500).json({
+        success: false,
+        error: 'GloomSchedule API not configured (GS_API_KEY and GS_API_ENDPOINT required)'
+      });
+    }
+    
+    // Build options from request body or environment variables
+    const options = {
+      apiKey: apiKey,
+      baseUrl: baseUrl,
+      googleLink: req.body.googleLink || process.env.SCHEDULE_GOOGLE_LINK,
+      icalLink: req.body.icalLink || process.env.SCHEDULE_ICAL_LINK,
+      channel: req.body.channel || process.env.SCHEDULE_CHANNEL_ID,
+      adminUser: req.body.adminUser || process.env.SCHEDULE_ADMIN_USER_ID,
+      timezone: req.body.timezone || process.env.CALENDAR_TIMEZONE || 'America/New_York',
+      include2ndF: req.body.include2ndF === true || req.body.include2ndF === 'true',
+      include3rdF: req.body.include3rdF === true || req.body.include3rdF === 'true'
+    };
+    
+    // Validate required fields
+    if (!options.googleLink || !options.icalLink || !options.channel || !options.adminUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: googleLink, icalLink, channel, and adminUser are required'
+      });
+    }
+    
+    const result = await schedulerGloomSchedule.postTomorrowsSchedule(options);
     res.json(result);
   } catch (err) {
     console.error(err);
