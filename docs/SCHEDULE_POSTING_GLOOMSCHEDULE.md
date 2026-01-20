@@ -225,8 +225,8 @@ Qs who haven't accepted their Q assignment are marked with "(unconfirmed)". The 
 ### Time Sorting
 Workouts are sorted by start time (earliest to latest), then alphabetically by AO name.
 
-### Active AOs Only
-Only fetches AOs that are currently active (not shut down).
+### AO Shutdown Date Filtering
+**The AO shutdown date overrides all scheduled events.** If an AO has a shutdown date, any scheduled workouts on or after that date will be automatically filtered out and not posted to Slack. This ensures that only active AOs appear in the schedule, even if orphaned events exist in the schedule system.
 
 ## Admin Notifications
 

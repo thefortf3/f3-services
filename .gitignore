@@ -58,6 +58,24 @@ typings/
 # dotenv environment variables file
 .env
 
+# Test and debug files
+test-*.js
+compare-*.js
+check-*.js
+verify-*.js
+debug-*.js
+final-*.js
+
+# Development documentation (keep main API docs)
+docs/SCHEDULE_POSTING_2WEEK_VALIDATION.md
+docs/SCHEDULE_POSTING_AO_NAME_CLEANING.md
+docs/SCHEDULE_POSTING_COMPLETE_FIX.md
+docs/SCHEDULE_POSTING_EVENT_TYPE_FILTERING.md
+docs/SCHEDULE_POSTING_FIX_SUMMARY.md
+docs/SCHEDULE_POSTING_MULTIPLE_Q_DISPLAY.md
+docs/SCHEDULE_POSTING_TIMEZONE_FIX.md
+docs/GOOGLE_APPS_SCRIPT_EXAMPLE.md
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 
