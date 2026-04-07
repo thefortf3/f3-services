@@ -6,6 +6,7 @@ const slack = require('./lib/slack');
 const pm = require("./lib/paxminer");
 const wordpress = require("./lib/wordpress");
 const pb = require("./lib/preblast");
+const bb = require("./lib/backblast");
 const calendar = require('./lib/calendar');
 const scheduler = require('./lib/scheduler');
 const schedulerGloomSchedule = require('./lib/scheduler-gloomschedule');
@@ -37,11 +38,14 @@ app.get("/api/bbcheck/", (req, res) =>
 
 app.get("/api/postbbs/", (req, res) => {
   let timestamp = parseFloat(req.query['timestamp']);
+  let noPost = req.query['no_post'] === 'true' || req.query['no_post'] === '1';
   let resultJson = {};
   resultJson['count'] = 0;
   resultJson['last'] = timestamp;
-  pm.getBBDataSince(timestamp, results => {
-    postBBs(results, timestamp).then(resultsJson => {
+  
+  // Always use Slack-based parsing
+  bb.searchBackblastPosts(timestamp.toString()).then(results => {
+    postBBs(results, timestamp, noPost).then(resultsJson => {
       res.header("Content-Type", "application/json");
       res.send(JSON.stringify(resultsJson, null, 4));
     });
@@ -53,12 +57,13 @@ app.get("/api/postbbs/", (req, res) => {
 
 app.get("/api/postpbs/", (req, res) => {
   let timestamp = parseFloat(req.query['timestamp']);
+  let noPost = req.query['no_post'] === 'true' || req.query['no_post'] === '1';
   let resultJson = {};
   resultJson['count'] = 0;
   resultJson['last'] = timestamp;
 
   pb.searchPreblastPosts(timestamp).then(results => {
-    postPBs(results, timestamp).then(resultsJson => {
+    postPBs(results, timestamp, noPost).then(resultsJson => {
       res.header("Content-Type", "application/json");
       res.send(JSON.stringify(resultsJson, null, 4));
     });
@@ -270,63 +275,114 @@ app.get('/api/check_missing_backblasts', async (req, res) => {
 
 
 // Helper function to post preblasts to WordPress
-async function postPBs(preblasts, timestamp) {
+async function postPBs(preblasts, timestamp, noPost=false) {
   let resultJson = {};
   resultJson['last'] = timestamp;
   resultJson['count'] = 0;
-  try {
-    for (let i = 0; i < preblasts.length; i++) {
-      let r = preblasts[i];
-      console.log(r.Preblast);
-      wordpress.postToWordpress(
-        r.Preblast, 
-        r.Date + " " + r.Time + ":00", 
-        r.Q, 
-        null,
-        r.Where, 
+  resultJson['errors'] = [];
+  resultJson['successful'] = [];
+  
+  for (let i = 0; i < preblasts.length; i++) {
+    let r = preblasts[i];
+    try {
+      // Skip null results from parsing errors
+      if (!r) {
+        resultJson['errors'].push({
+          index: i,
+          error: 'Null preblast (parsing failed)'
+        });
+        continue;
+      }
+      
+      console.log(r.title);
+      await wordpress.postToWordpress(
+        r.title, 
+        r.date + " " + r.time + ":00", 
+        r.q, 
+        r.coq || null,
+        r.ao, 
         [], 
-        r.Content,
-        true
+        r.backblast,
+        true, // is a preblast
+        noPost
       );
  
-      if (r.Timestamp > resultJson['last']) {
-        resultJson['last'] = r.Timestamp;
+      if (r.timestamp > resultJson['last']) {
+        resultJson['last'] = r.timestamp;
       }
       resultJson['count']++;
+      resultJson['successful'].push(r.title);
+    } catch (error) {
+      console.error(`Error processing preblast "${r?.title || 'unknown'}":`, error.message);
+      resultJson['errors'].push({
+        title: r?.title || 'unknown',
+        date: r?.date || 'unknown',
+        ao: r?.ao || 'unknown',
+        error: error.message
+      });
     }
-  } catch (error) {
-    console.log(error);
   }
+  
   return resultJson;
 }
 
 // Helper function to post backblasts to WordPress
-async function postBBs(backblasts, timestamp) {
+async function postBBs(backblasts, timestamp, noPost=false) {
   let resultJson = {};
   resultJson['last'] = timestamp;
   resultJson['count'] = 0;
-  try {
-    for (let i = 0; i < backblasts.length; i++) {
-      let bb = backblasts[i];
+  resultJson['errors'] = [];
+  resultJson['successful'] = [];
+  
+  for (let i = 0; i < backblasts.length; i++) {
+    let bb = backblasts[i];
+    
+    try {
+      // Skip null results from parsing errors
+      if (!bb) {
+        resultJson['errors'].push({
+          index: i,
+          error: 'Null backblast (parsing failed)'
+        });
+        continue;
+      }
+      
       console.log(bb);
+      
+      // Convert date string to Date object if needed
+      let date = bb.date;
+      if (typeof date === 'string') {
+        date = new Date(date);
+      }
 
-      wordpress.postToWordpress(
+      await wordpress.postToWordpress(
         bb.title, 
-        bb.date, 
+        date, 
         bb.q, 
-        ('coq' in bb) ? bb.coq : null, 
+        bb.coq || null, 
         bb.ao, 
-        bb.pax, 
-        bb.backblast
+        bb.pax || [], 
+        bb.backblast,
+        false, // not a preblast
+        noPost
       );
+      
       if (bb.timestamp > resultJson['last']) {
         resultJson['last'] = bb.timestamp;
       }
       resultJson['count']++;
+      resultJson['successful'].push(bb.title);
+    } catch (error) {
+      console.error(`Error processing backblast "${bb?.title || 'unknown'}":`, error.message);
+      resultJson['errors'].push({
+        title: bb?.title || 'unknown',
+        date: bb?.date || 'unknown',
+        ao: bb?.ao || 'unknown',
+        error: error.message
+      });
     }
-  } catch (error) {
-    console.log(error);
   }
+  
   return resultJson;
 }
 
