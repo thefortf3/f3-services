@@ -12,7 +12,6 @@
     "jshint": "^2.10.2",
     "jshint-stylish": "^2.2.1",
     "mocha": "^6.1.4",
-    "mysql": "^2.18.1",
     "node-fetch": "^2.7.0",
     "node-ical": "^0.23.0",
     "package.json": "^2.0.1",

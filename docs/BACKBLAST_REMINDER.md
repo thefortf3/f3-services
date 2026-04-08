@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Backblast Reminder service checks for missing backblasts and sends reminders to Site Qs and scheduled Qs via Slack.
+The Backblast Reminder service checks for missing backblasts by querying Slack channels directly and sends reminders to Site Qs and scheduled Qs via Slack.
 
 ## Endpoint
 
@@ -24,9 +24,27 @@ GET /api/check_missing_backblasts
 Add to your `.env` file:
 
 ```bash
+# Slack bot token with required scopes
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+
 # Channel where admin notifications about missing backblasts are sent
 BACKBLAST_REMINDER_CHANNEL=your_slack_channel_id
+
+# Admin user to notify about system issues (missing channel IDs, access errors)
+SCHEDULE_ADMIN_USER_ID=U123456789
+
+# GloomSchedule API credentials
+GS_API_KEY=your_gloomschedule_api_key
+GS_API_ENDPOINT=https://gloomschedule.com/api
 ```
+
+### Required Slack Bot Scopes
+
+Your Slack bot must have these OAuth scopes:
+- `channels:history` - Read public channel message history
+- `groups:history` - Read private channel history (if checking private AO channels)
+- `chat:write` - Send messages to channels and users
+- `users:read` - Get user information (for resolving Q names)
 
 ## Usage Examples
 
@@ -70,6 +88,7 @@ The endpoint returns JSON with both found and missing backblasts:
   "totalScheduled": 4,
   "foundCount": 2,
   "missingCount": 2,
+  "channelAccessErrorsCount": 0,
   "foundBackblasts": [
     {
       "date": "2026-01-17",
@@ -112,6 +131,14 @@ The endpoint returns JSON with both found and missing backblasts:
       ]
     }
   ],
+  "channelAccessErrors": [
+    {
+      "aoName": "The Dungeon",
+      "channelId": "C0ZZZZZ",
+      "errorType": "not_in_channel",
+      "errorMessage": "Bot is not a member of this channel"
+    }
+  ],
   "missingSlackIds": {
     "aos": [
       {
@@ -148,11 +175,17 @@ The endpoint returns JSON with both found and missing backblasts:
 
 - `success` (boolean): Whether the request was successful
 - `date` (string): The date that was checked (YYYY-MM-DD format)
-- `totalScheduled` (number): Total number of 1stF workouts scheduled for that date
+- `totalScheduled` (number): Total number of 1stF workouts scheduled for that date (excludes AOs with access errors)
 - `foundCount` (number): Number of backblasts that were posted
 - `missingCount` (number): Number of backblasts that are missing
+- `channelAccessErrorsCount` (number): Number of AO channels that couldn't be accessed
 - `foundBackblasts` (array): Details of workouts with backblasts posted
 - `missingBackblasts` (array): Details of workouts missing backblasts
+- `channelAccessErrors` (array): AO channels that couldn't be accessed (bot not member, channel not found, etc.)
+  - `aoName` (string): Name of the AO
+  - `channelId` (string): Slack channel ID that failed
+  - `errorType` (string): Error code from Slack API (e.g., "not_in_channel", "channel_not_found")
+  - `errorMessage` (string): Human-readable error message
 - `missingSlackIds` (object): Information about missing Slack IDs in GloomSchedule
   - `aos` (array): AOs without Slack channel IDs
   - `siteQs` (array): Site Qs without Slack user IDs (includes AO context)
@@ -175,9 +208,16 @@ The endpoint returns JSON with both found and missing backblasts:
    - Only checks 1stF Workout events (ignores 2ndF, 3rdF, etc.)
    - Skips events with no Q assigned (closed for that specific day)
    - Skips AOs with shutdown dates on or before the workout date
-3. **Checks Database**: Queries PAXMiner `beatdowns` table to see if backblast was posted
-4. **Tracks Missing Slack IDs**: Identifies AOs without channel IDs and Site Qs without user IDs (only for active, scheduled workouts)
-5. **Sends Reminders** (based on query parameters):
+3. **Checks Slack Channels**: For each AO channel:
+   - Queries `conversations.history` from workout date to present
+   - Searches for messages with `metadata.event_type === "backblast"`
+   - Matches backblast date to workout date (exact match required)
+   - Handles channel access errors (not_in_channel, channel_not_found, etc.)
+4. **Immediate Admin Notifications**: Sends alerts immediately when:
+   - An AO is missing its Slack channel ID in GloomSchedule
+   - Bot cannot access a channel (not a member, channel not found, permission denied, etc.)
+5. **Tracks Missing Slack IDs**: Identifies AOs without channel IDs and Site Qs without user IDs (only for active, scheduled workouts)
+6. **Sends Reminders** (based on query parameters):
    - **Channel Messages** (when `sendChannel=true` or `send=true`):
      - Posts admin notification to `BACKBLAST_REMINDER_CHANNEL` for each missing backblast
    - **Direct Messages** (when `sendDMs=true` or `send=true`):
@@ -185,6 +225,33 @@ The endpoint returns JSON with both found and missing backblasts:
      - Sends DM to scheduled Q (if different from Site Qs and has Slack user ID)
    - **Admin Notifications**:
      - Sends admin DM about missing Slack IDs to `SCHEDULE_ADMIN_USER_ID` (if any found)
+
+## Backblast Detection
+
+The system uses Slack message metadata to detect backblasts:
+
+**Detection Criteria:**
+- Message must have `metadata.event_type === "backblast"`
+- Message must have `metadata.event_payload.date` matching the workout date (YYYY-MM-DD)
+- Search starts from workout date (midnight UTC) to present time
+
+**Time Window:**
+- Searches from workout date to present (no upper time limit)
+- Allows backblasts to be posted late and still be counted
+- Only exact date matches are counted (prevents wrong-date backblasts from being counted)
+
+**Example Backblast Metadata:**
+```json
+{
+  "event_type": "backblast",
+  "event_payload": {
+    "date": "2026-01-17",
+    "title": "Morning Beatdown",
+    "the_q": "U123456",
+    "The_AO": "C789012"
+  }
+}
+```
 
 ## Slack Message Types
 
@@ -196,7 +263,28 @@ Posts to the configured `BACKBLAST_REMINDER_CHANNEL` with:
 - Scheduled Q information
 - Site Q information
 
-### Admin DM Notification (Missing Slack IDs)
+### Admin DM Notification (Missing Slack Channel ID)
+
+Sends immediate DM to `SCHEDULE_ADMIN_USER_ID` when an AO is missing its Slack channel ID:
+- AO name
+- Explanation of the issue
+- Request to update GloomSchedule
+
+### Admin DM Notification (Channel Access Error)
+
+Sends immediate DM to `SCHEDULE_ADMIN_USER_ID` when bot cannot access a channel:
+- AO name and channel ID
+- Error type (not_in_channel, channel_not_found, etc.)
+- User-friendly explanation
+- Note that AO was skipped (not counted as missing)
+
+**Common Error Types:**
+- `not_in_channel`: Bot needs to be invited to the channel
+- `channel_not_found`: Channel may be deleted or archived
+- `missing_scope`: Bot lacks required permissions
+- `access_denied`: Permission denied for other reasons
+
+### Admin DM Notification (Missing Slack IDs Summary)
 
 Sends DM to `SCHEDULE_ADMIN_USER_ID` when AOs or Site Qs are missing Slack IDs in GloomSchedule:
 - List of AOs without Slack channel IDs
@@ -254,16 +342,34 @@ The endpoint will return errors in these cases:
 - Invalid date format: Returns 400 with error message
 - Missing `BACKBLAST_REMINDER_CHANNEL` when `sendChannel=true` (or `send=true`): Returns 500 with error message
 - GloomSchedule API errors: Returns 500 with error message
-- Database connection errors: Returns 500 with error message
+- Missing `slackApp` parameter: Returns 500 with error message
 
 Individual Slack message failures (e.g., user has DMs disabled) are caught and reported in `reminderResults.errors` without failing the entire request.
+
+**Channel Access Errors:**
+- AOs with channel access errors are tracked separately in `channelAccessErrors`
+- These AOs are NOT counted as missing backblasts
+- Admin is immediately notified via DM about each access error
+- Common causes: bot not invited to channel, channel deleted, permission issues
 
 ## Data Sources
 
 - **Schedule**: GloomSchedule API (`getScheduledQs()`)
 - **AO Details**: GloomSchedule API (`getAODetails()`) for channel IDs and Site Q information
-- **Backblast Status**: PAXMiner database `beatdowns` table
+- **Backblast Status**: Slack channel history via `conversations.history` API
 - **Slack Integration**: F3 Slack workspace via Slack Bolt app
+
+## Rate Limits
+
+**Slack API Limits:**
+- `conversations.history` is a Tier 3 method: 50+ requests per minute
+- Burst behavior is tolerated
+- Since checks run once daily with typically <50 AOs, rate limits should not be an issue
+
+**For Non-Marketplace Apps (as of May 29, 2025):**
+- New commercially distributed apps: Limited to 1 request/minute (with limit=15 messages)
+- Marketplace & internal apps: Standard Tier 3 limits apply
+- Existing installations: Not affected by new limits
 
 ## Limitations
 
@@ -271,7 +377,10 @@ Individual Slack message failures (e.g., user has DMs disabled) are caught and r
 - Events with no Q assigned are skipped (indicates AO was closed for that day)
 - Requires Slack user IDs to be configured in GloomSchedule for DMs to work
 - Requires Slack channel IDs to be configured in GloomSchedule
-- AOs without channel IDs are skipped with a warning
+- AOs without channel IDs are skipped with immediate admin notification
+- AOs where bot cannot access the channel are skipped with immediate admin notification
+- Only detects backblasts with proper metadata (`event_type: "backblast"`)
+- Requires exact date match in backblast metadata (prevents wrong-date matches)
 - AOs with shutdown dates on or before the workout date are automatically skipped
 - Does not track reminder history (will resend if called multiple times for the same date)
 
@@ -283,3 +392,4 @@ Potential enhancements:
 - Add configurable delay (e.g., only remind if backblast missing after 24 hours)
 - Add summary report option (daily digest of all missing backblasts)
 - Add ability to exclude 2ndF/3rdF events by configuration
+- Add retry logic with exponential backoff for rate limit errors

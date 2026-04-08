@@ -3,7 +3,6 @@ const express = require('express');
 
 // Import service modules
 const slack = require('./lib/slack');
-const pm = require("./lib/paxminer");
 const wordpress = require("./lib/wordpress");
 const pb = require("./lib/preblast");
 const bb = require("./lib/backblast");
@@ -24,17 +23,6 @@ const PORT = process.env.PORT || 3000;
 // Health check routes
 app.get("/", (req, res) => res.redirect("/api/heartbeat"));
 app.get("/api/heartbeat", (req, res) => res.send("Ok"));
-
-// PAXminer routes
-app.get("/api/bbcheck/", (req, res) => 
-  pm.getBBs(results => {
-    res.header("Content-Type", "application/json");
-    res.send(JSON.stringify(results, null, 4));
-  }).catch(err => {
-    console.log(err);
-    res.send("Error: " + err);
-  })
-);
 
 app.get("/api/postbbs/", (req, res) => {
   let timestamp = parseFloat(req.query['timestamp']);
@@ -70,20 +58,6 @@ app.get("/api/postpbs/", (req, res) => {
   }).catch(err => {
     console.log(err);
     res.send("Error: " + err);
-  });
-});
-
-app.post("/api/addvq", (req, res) => {
-  const ao = req.body['ao'];
-  const pax = req.body['pax'];
-  const date = req.body['date'];
-  pm.addVQ(date, pax, ao, (err) => {
-    if (err) {
-      console.log(err);
-      res.send("Error: " + err);
-    } else {
-      res.send("Ok");
-    }
   });
 });
 
@@ -210,7 +184,7 @@ app.get('/api/check_missing_backblasts', async (req, res) => {
     const dateStr = targetDate.toISOString().split('T')[0];
 
     // Get backblast status (found and missing)
-    const status = await backblastReminder.getBackblastStatus(dateStr);
+    const status = await backblastReminder.getBackblastStatus(dateStr, slack.app);
 
     // Check which types of reminders to send
     // Legacy 'send=true' enables both channel and DMs
@@ -255,8 +229,10 @@ app.get('/api/check_missing_backblasts', async (req, res) => {
       totalScheduled: status.found.length + status.missing.length,
       foundCount: status.found.length,
       missingCount: status.missing.length,
+      channelAccessErrorsCount: status.channelAccessErrors ? status.channelAccessErrors.length : 0,
       foundBackblasts: status.found,
       missingBackblasts: status.missing,
+      channelAccessErrors: status.channelAccessErrors,
       missingSlackIds: status.missingSlackIds,
       remindersSent: shouldSend,
       remindersConfig: shouldSend ? { sendChannel, sendDMs } : null,
